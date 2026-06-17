@@ -83,24 +83,35 @@ export function captureDepth(
   const dir = new THREE.Vector3();
   viewCamera.getWorldDirection(dir).normalize();
 
-  // Depth used to size the "fit to view" capture. Use the surface hit by the
-  // screen-centre ray (the subject the user zoomed in on); the on-screen size
-  // of a feature is governed by ITS depth, not the model centre's. Fall back
-  // to the near side of the model if the centre ray misses.
+  // Depth used to size the "fit to view" capture. The on-screen size of a
+  // feature is governed by ITS depth, not the model centre's. Sample a grid of
+  // rays across the screen to estimate the visible subject's depth robustly
+  // (a single centre ray can miss the subject and break the capture). If no ray
+  // hits the model at all, fall back to the full-model fit.
   const bboxDepth = Math.max(1e-3, bboxCenter.clone().sub(viewCamera.position).dot(dir));
+  let fit = fitToView;
   let fitDepth = bboxDepth;
   if (fitToView) {
     const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2(0, 0), viewCamera);
-    const hits = ray.intersectObject(mesh, false);
-    fitDepth = hits.length ? hits[0].distance : Math.max(1e-3, bboxDepth - radius);
+    const ndc = new THREE.Vector2();
+    const samples = [-0.6, -0.3, 0, 0.3, 0.6];
+    let sum = 0, count = 0;
+    for (const sx of samples)
+      for (const sy of samples) {
+        ndc.set(sx, sy);
+        ray.setFromCamera(ndc, viewCamera);
+        const hits = ray.intersectObject(mesh, false);
+        if (hits.length) { sum += hits[0].distance; count++; }
+      }
+    if (count > 0) fitDepth = sum / count;
+    else fit = false; // model not under the framed view -> capture whole model
   }
 
   // Orthographic camera aimed along `dir`. For "fit to view" we centre on the
   // screen-centre ray at the subject's depth, so the on-screen framing/zoom is
   // reproduced (zooming into the face captures just the face). Otherwise we
   // centre on the model itself.
-  const center = fitToView
+  const center = fit
     ? viewCamera.position.clone().addScaledVector(dir, fitDepth)
     : bboxCenter;
   const cam = new THREE.OrthographicCamera();
@@ -129,7 +140,7 @@ export function captureDepth(
       }
 
   let left: number, right: number, bottom: number, top: number;
-  if (fitToView) {
+  if (fit) {
     // Match the perspective camera's on-screen rectangle at the subject depth
     // (the capture centre projects to camera-space origin).
     const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * fitDepth;

@@ -222,11 +222,31 @@ function captureAndBuild() {
   const fitToView = ($("fitMode") as HTMLSelectElement).value === "view";
   try {
     setStatus("深度マップを生成中 …");
-    lastDepth = captureDepth(renderer, originalMesh, camera, res, fitToView);
-    rebuildRelief();
+    try {
+      lastDepth = captureDepth(renderer, originalMesh, camera, res, fitToView);
+      buildFromDepth();
+    } catch (inner) {
+      // Empty capture (e.g. framed area missed the model): retry whole model.
+      if (fitToView) {
+        lastDepth = captureDepth(renderer, originalMesh, camera, res, false);
+        buildFromDepth();
+        setStatus("構図内にモデルが入っていなかったため、モデル全体で生成しました。", "ok");
+      } else {
+        throw inner;
+      }
+    }
+    revealViewportOnMobile();
   } catch (e) {
     console.error(e);
     setStatus(String(e instanceof Error ? e.message : e), "err");
+  }
+}
+
+// On phones the 3D view sits above the controls; scroll it into view so the
+// freshly generated preview is actually visible after tapping the button.
+function revealViewportOnMobile() {
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 }
 
@@ -239,22 +259,30 @@ function startRecapture() {
   setStatus("モデルを回転・ズームして、もう一度「この角度でプレビュー生成」を押してください。");
 }
 
+// Build the relief from the current depth map. Throws on failure (e.g. an
+// empty capture) so callers can decide how to recover.
+function buildFromDepth() {
+  if (!lastDepth) return;
+  const field = depthToHeight(lastDepth, readProcessOptions());
+  const geom = buildRelief(field, readGeometryOptions());
+  if (reliefMesh) { scene.remove(reliefMesh); reliefMesh.geometry.dispose(); }
+  reliefMesh = new THREE.Mesh(geom, reliefMat);
+  // Lay the relief flat: back on the grid, front facing +Z.
+  scene.add(reliefMesh);
+  ($("displayMode") as HTMLSelectElement).value = "relief";
+  updateVisibility();
+  exportBtn.disabled = false;
+  recaptureBtn.disabled = false;
+  setActiveStep(4);
+  const tri = (geom.getIndex()?.count ?? 0) / 3;
+  setStatus(`プレビュー更新: 約 ${tri.toLocaleString()} 三角形`, "ok");
+}
+
+// Slider-driven rebuilds: surface errors but never throw.
 function rebuildRelief() {
   if (!lastDepth) return;
   try {
-    const field = depthToHeight(lastDepth, readProcessOptions());
-    const geom = buildRelief(field, readGeometryOptions());
-    if (reliefMesh) { scene.remove(reliefMesh); reliefMesh.geometry.dispose(); }
-    reliefMesh = new THREE.Mesh(geom, reliefMat);
-    // Lay the relief flat: back on the grid, front facing +Z.
-    scene.add(reliefMesh);
-    ($("displayMode") as HTMLSelectElement).value = "relief";
-    updateVisibility();
-    exportBtn.disabled = false;
-    recaptureBtn.disabled = false;
-    setActiveStep(4);
-    const tri = (geom.getIndex()?.count ?? 0) / 3;
-    setStatus(`プレビュー更新: 約 ${tri.toLocaleString()} 三角形`, "ok");
+    buildFromDepth();
   } catch (e) {
     console.error(e);
     setStatus(String(e instanceof Error ? e.message : e), "err");
