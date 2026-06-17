@@ -217,12 +217,10 @@ function captureAndBuild() {
   if (!originalMesh) return;
   scene.updateMatrixWorld(true);
   const res = Number(($("res") as HTMLInputElement).value);
-  const fit = ($("fitMode") as HTMLSelectElement).value === "view"
-    ? controls.target.clone()
-    : undefined;
+  const fitToView = ($("fitMode") as HTMLSelectElement).value === "view";
   try {
     setStatus("深度マップを生成中 …");
-    lastDepth = captureDepth(renderer, originalMesh, camera, res, fit);
+    lastDepth = captureDepth(renderer, originalMesh, camera, res, fitToView);
     rebuildRelief();
   } catch (e) {
     console.error(e);

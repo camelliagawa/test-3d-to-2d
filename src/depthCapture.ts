@@ -69,7 +69,7 @@ export function captureDepth(
   mesh: THREE.Mesh,
   viewCamera: THREE.PerspectiveCamera,
   maxResolution: number,
-  fitTarget?: THREE.Vector3
+  fitToView = false
 ): DepthMap {
   // Bounding box of the model in world space.
   const geom = mesh.geometry;
@@ -83,9 +83,16 @@ export function captureDepth(
   const dir = new THREE.Vector3();
   viewCamera.getWorldDirection(dir).normalize();
 
-  // Orthographic camera aimed along `dir`. When `fitTarget` is given we centre
-  // on it (so the on-screen framing/zoom is respected); otherwise on the model.
-  const center = fitTarget ? fitTarget.clone() : bboxCenter;
+  // Depth of the model along the screen-centre ray (camera forward).
+  const viewDepth = Math.max(1e-3, bboxCenter.clone().sub(viewCamera.position).dot(dir));
+
+  // Orthographic camera aimed along `dir`. For "fit to view" we centre on the
+  // screen-centre ray at the model's depth, so the on-screen framing/zoom is
+  // reproduced (zooming into the face captures just the face). Otherwise we
+  // centre on the model itself.
+  const center = fitToView
+    ? viewCamera.position.clone().addScaledVector(dir, viewDepth)
+    : bboxCenter;
   const cam = new THREE.OrthographicCamera();
   cam.position.copy(center).addScaledVector(dir, -(radius * 2 + 1));
   cam.quaternion.copy(viewCamera.quaternion);
@@ -112,11 +119,10 @@ export function captureDepth(
       }
 
   let left: number, right: number, bottom: number, top: number;
-  if (fitTarget) {
-    // Match the perspective camera's on-screen rectangle at the target plane,
-    // centred on the target (which projects to camera-space origin).
-    const dist = viewCamera.position.distanceTo(fitTarget);
-    const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * dist;
+  if (fitToView) {
+    // Match the perspective camera's on-screen rectangle at the model depth
+    // (the capture centre projects to camera-space origin).
+    const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * viewDepth;
     const halfW = halfH * viewCamera.aspect;
     left = -halfW; right = halfW; bottom = -halfH; top = halfH;
   } else {
