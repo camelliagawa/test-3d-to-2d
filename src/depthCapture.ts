@@ -147,7 +147,8 @@ export function captureDepth(
   // Prefer a float render target for smooth depth; fall back to 16-bit packing
   // into an 8-bit target where float-RT readback is unavailable (e.g. iOS).
   const gl = renderer.getContext();
-  const useFloat = renderer.capabilities.isWebGL2 && !!gl.getExtension("EXT_color_buffer_float");
+  const isWebGL2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+  const useFloat = isWebGL2 && !!gl.getExtension("EXT_color_buffer_float");
 
   const target = new THREE.WebGLRenderTarget(width, height, {
     type: useFloat ? THREE.FloatType : THREE.UnsignedByteType,
