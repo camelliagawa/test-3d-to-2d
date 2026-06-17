@@ -13,6 +13,7 @@ const viewport = $("viewport");
 const dropzone = $("dropzone");
 const fileInput = $<HTMLInputElement>("fileInput");
 const captureBtn = $<HTMLButtonElement>("captureBtn");
+const recaptureBtn = $<HTMLButtonElement>("recaptureBtn");
 const exportBtn = $<HTMLButtonElement>("exportBtn");
 const statusEl = $("status");
 
@@ -104,6 +105,7 @@ function loadSTL(buffer: ArrayBuffer) {
 
   dropzone.classList.add("loaded");
   captureBtn.disabled = false;
+  recaptureBtn.disabled = true;
   exportBtn.disabled = true;
   ($("displayMode") as HTMLSelectElement).value = "original";
   setActiveStep(2);
@@ -209,14 +211,26 @@ function captureAndBuild() {
   if (!originalMesh) return;
   scene.updateMatrixWorld(true);
   const res = Number(($("res") as HTMLInputElement).value);
+  const fit = ($("fitMode") as HTMLSelectElement).value === "view"
+    ? controls.target.clone()
+    : undefined;
   try {
     setStatus("深度マップを生成中 …");
-    lastDepth = captureDepth(renderer, originalMesh, camera, res);
+    lastDepth = captureDepth(renderer, originalMesh, camera, res, fit);
     rebuildRelief();
   } catch (e) {
     console.error(e);
     setStatus(String(e instanceof Error ? e.message : e), "err");
   }
+}
+
+// Switch back to the original model so the user can re-aim and regenerate.
+function startRecapture() {
+  if (!originalMesh) return;
+  ($("displayMode") as HTMLSelectElement).value = "original";
+  updateVisibility();
+  setActiveStep(2);
+  setStatus("モデルを回転・ズームして、もう一度「この角度でプレビュー生成」を押してください。");
 }
 
 function rebuildRelief() {
@@ -231,6 +245,7 @@ function rebuildRelief() {
     ($("displayMode") as HTMLSelectElement).value = "relief";
     updateVisibility();
     exportBtn.disabled = false;
+    recaptureBtn.disabled = false;
     setActiveStep(4);
     const tri = (geom.getIndex()?.count ?? 0) / 3;
     setStatus(`プレビュー更新: 約 ${tri.toLocaleString()} 三角形`, "ok");
@@ -241,6 +256,7 @@ function rebuildRelief() {
 }
 
 captureBtn.addEventListener("click", captureAndBuild);
+recaptureBtn.addEventListener("click", startRecapture);
 
 // ---- Export -----------------------------------------------------------------
 exportBtn.addEventListener("click", () => {

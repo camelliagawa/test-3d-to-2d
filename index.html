@@ -42,15 +42,25 @@
         <aside id="panel">
           <section class="card">
             <h2><span class="num">2</span>角度を決める</h2>
-            <p class="hint">モデルを回転し、レリーフの「正面」にしたい向きにします。</p>
+            <p class="hint">モデルを回転・ズームし、レリーフの「正面」にしたい構図にします。</p>
             <div class="seg" role="group" aria-label="視点プリセット">
               <button class="preset" data-view="front">正面</button>
               <button class="preset" data-view="top">上</button>
               <button class="preset" data-view="side">横</button>
             </div>
+            <label class="field">
+              <span class="field-name">範囲</span>
+              <div class="select-wrap">
+                <select id="fitMode">
+                  <option value="model">モデル全体</option>
+                  <option value="view">画面に合わせる（ズーム/構図反映）</option>
+                </select>
+              </div>
+            </label>
             <button id="captureBtn" class="primary" disabled>
               この角度でプレビュー生成
             </button>
+            <button id="recaptureBtn" class="secondary" disabled>↺ 角度を変えてやり直す</button>
           </section>
 
           <section class="card">

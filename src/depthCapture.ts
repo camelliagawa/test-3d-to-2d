@@ -67,14 +67,15 @@ function makeDepthMaterial(float: boolean, near: number, far: number): THREE.Sha
 export function captureDepth(
   renderer: THREE.WebGLRenderer,
   mesh: THREE.Mesh,
-  viewCamera: THREE.Camera,
-  maxResolution: number
+  viewCamera: THREE.PerspectiveCamera,
+  maxResolution: number,
+  fitTarget?: THREE.Vector3
 ): DepthMap {
   // Bounding box of the model in world space.
   const geom = mesh.geometry;
   geom.computeBoundingBox();
   const bbox = geom.boundingBox!.clone().applyMatrix4(mesh.matrixWorld);
-  const center = bbox.getCenter(new THREE.Vector3());
+  const bboxCenter = bbox.getCenter(new THREE.Vector3());
   const sphere = bbox.getBoundingSphere(new THREE.Sphere());
   const radius = sphere.radius;
 
@@ -82,14 +83,16 @@ export function captureDepth(
   const dir = new THREE.Vector3();
   viewCamera.getWorldDirection(dir).normalize();
 
-  // Orthographic camera aimed along `dir`, placed outside the bounding sphere.
+  // Orthographic camera aimed along `dir`. When `fitTarget` is given we centre
+  // on it (so the on-screen framing/zoom is respected); otherwise on the model.
+  const center = fitTarget ? fitTarget.clone() : bboxCenter;
   const cam = new THREE.OrthographicCamera();
-  cam.position.copy(center).addScaledVector(dir, -(radius + 1));
+  cam.position.copy(center).addScaledVector(dir, -(radius * 2 + 1));
   cam.quaternion.copy(viewCamera.quaternion);
   cam.updateMatrixWorld(true);
 
-  // Project the 8 bbox corners into the camera's view space to find a tight
-  // frustum (extents in right/up and near/far along the view axis).
+  // Project the 8 bbox corners into the camera's view space to find near/far
+  // (and, for the full-model fit, the right/up extents).
   const view = cam.matrixWorldInverse;
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
@@ -108,11 +111,23 @@ export function captureDepth(
         minZ = Math.min(minZ, corner.z); maxZ = Math.max(maxZ, corner.z);
       }
 
-  const worldWidth = maxX - minX;
-  const worldHeight = maxY - minY;
+  let left: number, right: number, bottom: number, top: number;
+  if (fitTarget) {
+    // Match the perspective camera's on-screen rectangle at the target plane,
+    // centred on the target (which projects to camera-space origin).
+    const dist = viewCamera.position.distanceTo(fitTarget);
+    const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * dist;
+    const halfW = halfH * viewCamera.aspect;
+    left = -halfW; right = halfW; bottom = -halfH; top = halfH;
+  } else {
+    left = minX; right = maxX; bottom = minY; top = maxY;
+  }
 
-  cam.left = minX; cam.right = maxX;
-  cam.bottom = minY; cam.top = maxY;
+  const worldWidth = right - left;
+  const worldHeight = top - bottom;
+
+  cam.left = left; cam.right = right;
+  cam.bottom = bottom; cam.top = top;
   // View-space z is negative in front of the camera; near/far are positive.
   cam.near = Math.max(0.001, -maxZ - 1);
   cam.far = -minZ + 1;
