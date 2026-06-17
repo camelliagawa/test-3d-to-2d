@@ -16,13 +16,14 @@ export interface DepthMap {
   worldHeight: number;
 }
 
-// Material that encodes view-space depth (distance from camera along the view
-// axis), normalised to [0,1] over [near, far], into 16 bits across the R and G
-// channels of an 8-bit render target. Alpha = 1 marks a hit; the target is
-// cleared with alpha = 0 for background. 8-bit targets work everywhere,
-// including iOS Safari, where float-texture readback is unreliable.
-function makeDepthMaterial(near: number, far: number): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+// Depth material. When `float` is true it writes the raw view-space distance
+// into the red channel (full float precision). Otherwise it encodes the
+// distance, normalised to [0,1] over [near, far], into 16 bits across the R and
+// G channels of an 8-bit target (fallback for GPUs without float-RT readback,
+// e.g. some iOS devices). Alpha = 1 marks a hit; the target is cleared with
+// alpha = 0 so background pixels are distinguishable.
+function makeDepthMaterial(float: boolean, near: number, far: number): THREE.ShaderMaterial {
+  const mat = new THREE.ShaderMaterial({
     side: THREE.DoubleSide,
     uniforms: { uNear: { value: near }, uFar: { value: far } },
     vertexShader: /* glsl */ `
@@ -33,19 +34,29 @@ function makeDepthMaterial(near: number, far: number): THREE.ShaderMaterial {
         gl_Position = projectionMatrix * mv;
       }
     `,
-    fragmentShader: /* glsl */ `
-      varying float vDepth;
-      uniform float uNear;
-      uniform float uFar;
-      void main() {
-        float n = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0);
-        float x = n * 65535.0;
-        float hi = floor(x / 256.0);
-        float lo = x - hi * 256.0;
-        gl_FragColor = vec4(hi / 255.0, lo / 255.0, 0.0, 1.0);
-      }
-    `,
+    fragmentShader: float
+      ? /* glsl */ `
+        varying float vDepth;
+        void main() {
+          gl_FragColor = vec4(vDepth, 0.0, 0.0, 1.0);
+        }
+      `
+      : /* glsl */ `
+        varying float vDepth;
+        uniform float uNear;
+        uniform float uFar;
+        void main() {
+          float n = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0);
+          float x = n * 65535.0;
+          float hi = floor(x / 256.0);
+          float lo = x - hi * 256.0;
+          gl_FragColor = vec4(hi / 255.0, lo / 255.0, 0.0, 1.0);
+        }
+      `,
   });
+  // Keep the encoded values intact: no tone mapping or colour-space curve.
+  mat.toneMapped = false;
+  return mat;
 }
 
 /**
@@ -118,51 +129,64 @@ export function captureDepth(
     width = Math.max(2, Math.round(maxResolution * aspect));
   }
 
-  // 8-bit RGBA target: widely supported, including mobile Safari.
+  // Prefer a float render target for smooth depth; fall back to 16-bit packing
+  // into an 8-bit target where float-RT readback is unavailable (e.g. iOS).
+  const gl = renderer.getContext();
+  const useFloat = renderer.capabilities.isWebGL2 && !!gl.getExtension("EXT_color_buffer_float");
+
   const target = new THREE.WebGLRenderTarget(width, height, {
-    type: THREE.UnsignedByteType,
+    type: useFloat ? THREE.FloatType : THREE.UnsignedByteType,
     format: THREE.RGBAFormat,
     minFilter: THREE.NearestFilter,
     magFilter: THREE.NearestFilter,
     depthBuffer: true,
   });
+  // Store raw values without any colour-space conversion on write.
+  target.texture.colorSpace = THREE.NoColorSpace;
 
-  const depthMat = makeDepthMaterial(cam.near, cam.far);
+  const depthMat = makeDepthMaterial(useFloat, cam.near, cam.far);
   const prevMat = mesh.material;
   const prevBg = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
   const prevTarget = renderer.getRenderTarget();
+  const prevToneMapping = renderer.toneMapping;
 
+  renderer.toneMapping = THREE.NoToneMapping;
   mesh.material = depthMat;
   renderer.setRenderTarget(target);
-  // Clear with alpha = 0 so background pixels are distinguishable from hits.
   renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
   renderer.clear();
   renderer.render(mesh, cam);
 
-  const rgba = new Uint8Array(width * height * 4);
-  renderer.readRenderTargetPixels(target, 0, 0, width, height, rgba);
+  const data = new Float32Array(width * height);
+  const range = cam.far - cam.near;
+
+  if (useFloat) {
+    const buf = new Float32Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, buf);
+    for (let i = 0; i < width * height; i++) {
+      data[i] = buf[i * 4 + 3] < 0.5 ? Infinity : buf[i * 4];
+    }
+  } else {
+    const buf = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, buf);
+    for (let i = 0; i < width * height; i++) {
+      if (buf[i * 4 + 3] < 128) {
+        data[i] = Infinity;
+      } else {
+        const n = (buf[i * 4] * 256 + buf[i * 4 + 1]) / 65535;
+        data[i] = cam.near + n * range;
+      }
+    }
+  }
 
   // Restore renderer / mesh state.
   mesh.material = prevMat;
   renderer.setRenderTarget(prevTarget);
   renderer.setClearColor(prevBg, prevAlpha);
+  renderer.toneMapping = prevToneMapping;
   depthMat.dispose();
   target.dispose();
-
-  // Unpack 16-bit normalised depth (R:hi, G:lo) back to a view-space distance.
-  // Alpha < 128 means the pixel was never drawn -> background.
-  const range = cam.far - cam.near;
-  const data = new Float32Array(width * height);
-  for (let i = 0; i < width * height; i++) {
-    const a = rgba[i * 4 + 3];
-    if (a < 128) {
-      data[i] = Infinity;
-    } else {
-      const n = (rgba[i * 4] * 256 + rgba[i * 4 + 1]) / 65535;
-      data[i] = cam.near + n * range;
-    }
-  }
 
   return { data, width, height, worldWidth, worldHeight };
 }
