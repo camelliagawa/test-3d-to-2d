@@ -194,10 +194,16 @@ function readGeometryOptions() {
 ($("displayMode") as HTMLSelectElement).addEventListener("change", updateVisibility);
 
 // Resolution change requires a fresh depth capture; other params just rebuild.
+// Rebuilds are debounced so dragging a slider at high resolution stays smooth.
+let rebuildTimer = 0;
+function scheduleRebuild() {
+  clearTimeout(rebuildTimer);
+  rebuildTimer = window.setTimeout(rebuildRelief, 140);
+}
 function onParamChange(id: string) {
   if (!lastDepth) return;
   if (id === "res") return; // recapture only on button press to avoid churn
-  rebuildRelief();
+  scheduleRebuild();
 }
 
 function updateVisibility() {
