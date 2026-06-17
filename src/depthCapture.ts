@@ -16,13 +16,15 @@ export interface DepthMap {
   worldHeight: number;
 }
 
-const BG_SENTINEL = 1e9;
-
-// Material that writes the positive view-space depth (distance from camera
-// along the view axis) into the red channel of a float render target.
-function makeDepthMaterial(): THREE.ShaderMaterial {
+// Material that encodes view-space depth (distance from camera along the view
+// axis), normalised to [0,1] over [near, far], into 16 bits across the R and G
+// channels of an 8-bit render target. Alpha = 1 marks a hit; the target is
+// cleared with alpha = 0 for background. 8-bit targets work everywhere,
+// including iOS Safari, where float-texture readback is unreliable.
+function makeDepthMaterial(near: number, far: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     side: THREE.DoubleSide,
+    uniforms: { uNear: { value: near }, uFar: { value: far } },
     vertexShader: /* glsl */ `
       varying float vDepth;
       void main() {
@@ -33,8 +35,14 @@ function makeDepthMaterial(): THREE.ShaderMaterial {
     `,
     fragmentShader: /* glsl */ `
       varying float vDepth;
+      uniform float uNear;
+      uniform float uFar;
       void main() {
-        gl_FragColor = vec4(vDepth, 0.0, 0.0, 1.0);
+        float n = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0);
+        float x = n * 65535.0;
+        float hi = floor(x / 256.0);
+        float lo = x - hi * 256.0;
+        gl_FragColor = vec4(hi / 255.0, lo / 255.0, 0.0, 1.0);
       }
     `,
   });
@@ -110,15 +118,16 @@ export function captureDepth(
     width = Math.max(2, Math.round(maxResolution * aspect));
   }
 
+  // 8-bit RGBA target: widely supported, including mobile Safari.
   const target = new THREE.WebGLRenderTarget(width, height, {
-    type: THREE.FloatType,
+    type: THREE.UnsignedByteType,
     format: THREE.RGBAFormat,
     minFilter: THREE.NearestFilter,
     magFilter: THREE.NearestFilter,
     depthBuffer: true,
   });
 
-  const depthMat = makeDepthMaterial();
+  const depthMat = makeDepthMaterial(cam.near, cam.far);
   const prevMat = mesh.material;
   const prevBg = renderer.getClearColor(new THREE.Color());
   const prevAlpha = renderer.getClearAlpha();
@@ -126,11 +135,12 @@ export function captureDepth(
 
   mesh.material = depthMat;
   renderer.setRenderTarget(target);
-  renderer.setClearColor(new THREE.Color(BG_SENTINEL, 0, 0), 1);
+  // Clear with alpha = 0 so background pixels are distinguishable from hits.
+  renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
   renderer.clear();
   renderer.render(mesh, cam);
 
-  const rgba = new Float32Array(width * height * 4);
+  const rgba = new Uint8Array(width * height * 4);
   renderer.readRenderTargetPixels(target, 0, 0, width, height, rgba);
 
   // Restore renderer / mesh state.
@@ -140,10 +150,18 @@ export function captureDepth(
   depthMat.dispose();
   target.dispose();
 
+  // Unpack 16-bit normalised depth (R:hi, G:lo) back to a view-space distance.
+  // Alpha < 128 means the pixel was never drawn -> background.
+  const range = cam.far - cam.near;
   const data = new Float32Array(width * height);
   for (let i = 0; i < width * height; i++) {
-    const v = rgba[i * 4];
-    data[i] = v >= BG_SENTINEL * 0.5 ? Infinity : v;
+    const a = rgba[i * 4 + 3];
+    if (a < 128) {
+      data[i] = Infinity;
+    } else {
+      const n = (rgba[i * 4] * 256 + rgba[i * 4 + 1]) / 65535;
+      data[i] = cam.near + n * range;
+    }
   }
 
   return { data, width, height, worldWidth, worldHeight };
