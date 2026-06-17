@@ -78,3 +78,19 @@ button.preset { flex: 1; }
 .status { font-size: 12px; color: var(--muted); margin: 10px 0 0; min-height: 16px; }
 .status.ok { color: #5fd38a; }
 .status.err { color: #ff7676; }
+
+/* Narrow screens (phones): stack the viewport and control panel vertically
+   so every control is reachable without horizontal scrolling. */
+@media (max-width: 760px) {
+  #topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  #topbar h1 { font-size: 15px; }
+  #steps { flex-wrap: wrap; }
+
+  main { flex-direction: column; }
+  #viewport { flex: 0 0 55vh; min-height: 55vh; }
+  #panel {
+    width: 100%; flex: 1 1 auto;
+    border-left: none; border-top: 1px solid var(--border);
+    -webkit-overflow-scrolling: touch;
+  }
+}
