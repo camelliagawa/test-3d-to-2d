@@ -42,7 +42,7 @@
         <aside id="panel">
           <section class="card">
             <h2><span class="num">2</span>角度を決める</h2>
-            <p class="hint">モデルを回転・ズームし、レリーフの「正面」にしたい構図にします。</p>
+            <p class="hint">見せたい部分が画面いっぱいになるよう回転・ズームします。映っている構図がそのままレリーフになります（解像度はその範囲に集中します）。</p>
             <div class="seg" role="group" aria-label="視点プリセット">
               <button class="preset" data-view="front">正面</button>
               <button class="preset" data-view="top">上</button>
@@ -52,8 +52,8 @@
               <span class="field-name">範囲</span>
               <div class="select-wrap">
                 <select id="fitMode">
+                  <option value="view" selected>画面に合わせる（構図/ズーム反映・高精細）</option>
                   <option value="model">モデル全体</option>
-                  <option value="view">画面に合わせる（ズーム/構図反映）</option>
                 </select>
               </div>
             </label>
