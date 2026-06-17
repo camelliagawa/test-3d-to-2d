@@ -86,7 +86,7 @@ main { flex: 1; display: flex; min-height: 0; }
   background:
     radial-gradient(120% 90% at 50% 0%, #1a2230 0%, #0d1015 70%);
 }
-#viewport canvas { display: block; }
+#viewport canvas { display: block; width: 100% !important; height: 100% !important; }
 
 /* ---- Dropzone --------------------------------------------------------- */
 #dropzone {
