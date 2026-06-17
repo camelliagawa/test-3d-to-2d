@@ -3,25 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0e1116" />
     <title>STL → 半立体（レリーフ）変換</title>
   </head>
   <body>
     <div id="app">
       <header id="topbar">
-        <h1>STL → 半立体（レリーフ）</h1>
-        <div id="steps">
-          <span class="step" data-step="1">① 表示</span>
-          <span class="step" data-step="2">② 角度決定</span>
-          <span class="step" data-step="3">③ プレビュー</span>
-          <span class="step" data-step="4">④ 出力</span>
+        <div class="brand">
+          <svg class="brand-mark" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2 21 7v10l-9 5-9-5V7l9-5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M3.5 7 12 12l8.5-5M12 12v10" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" opacity=".55"/>
+          </svg>
+          <h1>STL → 半立体 <span class="brand-sub">レリーフ変換</span></h1>
         </div>
+        <ol id="steps">
+          <li class="step" data-step="1"><span class="step-num">1</span><span class="step-label">表示</span></li>
+          <li class="step" data-step="2"><span class="step-num">2</span><span class="step-label">角度決定</span></li>
+          <li class="step" data-step="3"><span class="step-num">3</span><span class="step-label">プレビュー</span></li>
+          <li class="step" data-step="4"><span class="step-num">4</span><span class="step-label">出力</span></li>
+        </ol>
       </header>
 
       <main>
         <div id="viewport">
           <div id="dropzone">
             <div class="dz-inner">
-              <p class="dz-title">STLファイルをここにドラッグ&ドロップ</p>
+              <svg class="dz-icon" width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 14v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <p class="dz-title">STL ファイルをドラッグ&ドロップ</p>
               <p class="dz-sub">またはクリックして選択</p>
               <input type="file" id="fileInput" accept=".stl" hidden />
             </div>
@@ -30,50 +41,70 @@
 
         <aside id="panel">
           <section class="card">
-            <h2>② 角度を決める</h2>
-            <p class="hint">マウスでモデルを回転し、レリーフの「正面」にしたい向きにします。</p>
-            <div class="btn-row">
+            <h2><span class="num">2</span>角度を決める</h2>
+            <p class="hint">モデルを回転し、レリーフの「正面」にしたい向きにします。</p>
+            <div class="seg" role="group" aria-label="視点プリセット">
               <button class="preset" data-view="front">正面</button>
               <button class="preset" data-view="top">上</button>
               <button class="preset" data-view="side">横</button>
             </div>
-            <button id="captureBtn" class="primary" disabled>この角度でプレビュー生成</button>
+            <button id="captureBtn" class="primary" disabled>
+              この角度でプレビュー生成
+            </button>
           </section>
 
           <section class="card">
-            <h2>③ レリーフ設定</h2>
-            <label>表示
-              <select id="displayMode">
-                <option value="relief">レリーフ</option>
-                <option value="original">元モデル</option>
-              </select>
+            <h2><span class="num">3</span>レリーフ設定</h2>
+
+            <label class="field">
+              <span class="field-name">表示</span>
+              <div class="select-wrap">
+                <select id="displayMode">
+                  <option value="relief">レリーフ</option>
+                  <option value="original">元モデル</option>
+                </select>
+              </div>
             </label>
-            <label>外形
-              <select id="shapeMode">
-                <option value="silhouette">輪郭クリップ（形に沿う）</option>
-                <option value="plate">長方形プレート</option>
-              </select>
+
+            <label class="field">
+              <span class="field-name">外形</span>
+              <div class="select-wrap">
+                <select id="shapeMode">
+                  <option value="silhouette">輪郭クリップ（形に沿う）</option>
+                  <option value="plate">長方形プレート</option>
+                </select>
+              </div>
             </label>
-            <label>出力幅 (mm): <span id="planeWVal">60</span>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">出力幅</span><span class="slider-val"><b id="planeWVal">60</b> mm</span></span>
               <input type="range" id="planeW" min="10" max="200" step="1" value="60" />
             </label>
-            <label>レリーフ深さ (mm): <span id="reliefDVal">8</span>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">レリーフ深さ</span><span class="slider-val"><b id="reliefDVal">8</b> mm</span></span>
               <input type="range" id="reliefD" min="1" max="40" step="0.5" value="8" />
             </label>
-            <label>ベース厚み (mm): <span id="baseTVal">2</span>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">ベース厚み</span><span class="slider-val"><b id="baseTVal">2</b> mm</span></span>
               <input type="range" id="baseT" min="0.5" max="20" step="0.5" value="2" />
             </label>
-            <label>解像度: <span id="resVal">320</span>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">解像度</span><span class="slider-val"><b id="resVal">320</b></span></span>
               <input type="range" id="res" min="80" max="600" step="20" value="320" />
             </label>
-            <label>深度の強調 (γ): <span id="gammaVal">1.0</span>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">深度の強調 (γ)</span><span class="slider-val"><b id="gammaVal">1.0</b></span></span>
               <input type="range" id="gamma" min="0.3" max="3" step="0.1" value="1.0" />
             </label>
           </section>
 
           <section class="card">
-            <h2>④ 出力</h2>
-            <button id="exportBtn" class="primary" disabled>STLで書き出し</button>
+            <h2><span class="num">4</span>出力</h2>
+            <button id="exportBtn" class="primary" disabled>STL で書き出し</button>
             <p id="status" class="status"></p>
           </section>
         </aside>
