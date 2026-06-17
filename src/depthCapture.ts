@@ -83,15 +83,25 @@ export function captureDepth(
   const dir = new THREE.Vector3();
   viewCamera.getWorldDirection(dir).normalize();
 
-  // Depth of the model along the screen-centre ray (camera forward).
-  const viewDepth = Math.max(1e-3, bboxCenter.clone().sub(viewCamera.position).dot(dir));
+  // Depth used to size the "fit to view" capture. Use the surface hit by the
+  // screen-centre ray (the subject the user zoomed in on); the on-screen size
+  // of a feature is governed by ITS depth, not the model centre's. Fall back
+  // to the near side of the model if the centre ray misses.
+  const bboxDepth = Math.max(1e-3, bboxCenter.clone().sub(viewCamera.position).dot(dir));
+  let fitDepth = bboxDepth;
+  if (fitToView) {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(0, 0), viewCamera);
+    const hits = ray.intersectObject(mesh, false);
+    fitDepth = hits.length ? hits[0].distance : Math.max(1e-3, bboxDepth - radius);
+  }
 
   // Orthographic camera aimed along `dir`. For "fit to view" we centre on the
-  // screen-centre ray at the model's depth, so the on-screen framing/zoom is
+  // screen-centre ray at the subject's depth, so the on-screen framing/zoom is
   // reproduced (zooming into the face captures just the face). Otherwise we
   // centre on the model itself.
   const center = fitToView
-    ? viewCamera.position.clone().addScaledVector(dir, viewDepth)
+    ? viewCamera.position.clone().addScaledVector(dir, fitDepth)
     : bboxCenter;
   const cam = new THREE.OrthographicCamera();
   cam.position.copy(center).addScaledVector(dir, -(radius * 2 + 1));
@@ -120,9 +130,9 @@ export function captureDepth(
 
   let left: number, right: number, bottom: number, top: number;
   if (fitToView) {
-    // Match the perspective camera's on-screen rectangle at the model depth
+    // Match the perspective camera's on-screen rectangle at the subject depth
     // (the capture centre projects to camera-space origin).
-    const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * viewDepth;
+    const halfH = Math.tan(THREE.MathUtils.degToRad(viewCamera.fov) / 2) * fitDepth;
     const halfW = halfH * viewCamera.aspect;
     left = -halfW; right = halfW; bottom = -halfH; top = halfH;
   } else {
