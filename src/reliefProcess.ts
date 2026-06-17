@@ -14,6 +14,9 @@ export interface ProcessOptions {
   /** 0 = keep overall volume, 1 = flatten the global form and boost detail
    *  (medallion / coin-style bas-relief). */
   detail: number;
+  /** Smoothing radius in pixels (0 = off). Softens depth-discontinuity cracks,
+   *  low-poly facets and jagged edges at the cost of fine detail. */
+  smooth: number;
   /** Contrast curve applied to the final height (>1 deepens). */
   gamma: number;
 }
@@ -119,6 +122,15 @@ export function depthToHeight(depth: DepthMap, opts: ProcessOptions): HeightFiel
       const high = m[i] - low;
       m[i] = low * formWeight + high * detailGain;
     }
+  }
+
+  // 2b) Optional smoothing (valid-aware) to soften cracks, facets and edges.
+  if (opts.smooth >= 1) {
+    const val = new Float32Array(N);
+    const wgt = new Float32Array(N);
+    for (let i = 0; i < N; i++) { if (valid[i]) { val[i] = m[i]; wgt[i] = 1; } }
+    boxBlur(val, wgt, w, h, Math.round(opts.smooth));
+    for (let i = 0; i < N; i++) { if (valid[i] && wgt[i] > 0) m[i] = val[i] / wgt[i]; }
   }
 
   // 3) Normalise to [0,1] over valid pixels, apply gamma; background -> NaN.

@@ -164,6 +164,7 @@ function bindSlider(id: string, labelId: string) {
   sync();
 }
 bindSlider("detail", "detailVal");
+bindSlider("smooth", "smoothVal");
 bindSlider("planeW", "planeWVal");
 bindSlider("reliefD", "reliefDVal");
 bindSlider("baseT", "baseTVal");
@@ -176,6 +177,7 @@ function readProcessOptions() {
   return {
     removeTilt: ($("tiltMode") as HTMLSelectElement).value === "on",
     detail: num("detail") / 100,
+    smooth: num("smooth"),
     gamma: num("gamma"),
   };
 }
