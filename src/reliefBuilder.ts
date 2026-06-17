@@ -1,65 +1,47 @@
 import * as THREE from "three";
-import type { DepthMap } from "./depthCapture";
+import type { HeightField } from "./reliefProcess";
 
 export type ShapeMode = "silhouette" | "plate";
 
 export interface ReliefOptions {
-  /** Output width of the relief in millimetres (maps to the depth-map width). */
+  /** Output width of the relief in millimetres (maps to the field width). */
   planeWidthMm: number;
   /** Maximum relief height (front surface) in millimetres. */
   reliefDepthMm: number;
   /** Flat base/back thickness in millimetres. */
   baseThicknessMm: number;
-  /** Depth emphasis exponent (gamma). >1 deepens, <1 flattens. */
-  gamma: number;
   /** "silhouette" clips to the model outline, "plate" keeps a rectangular base. */
   mode: ShapeMode;
 }
 
 /**
- * Turn a depth map into a watertight relief mesh:
- *   front surface = height field (near = tall, far = low)
+ * Turn a normalised height field (values 0..1, NaN = background) into a
+ * watertight relief mesh:
+ *   front surface = height field (tall = near)
  *   back          = flat plane at z = 0
  *   side walls     = skirt closing the boundary
  *
  * The result is a manifold, closed solid suitable for 3D printing.
  */
-export function buildRelief(depth: DepthMap, opts: ReliefOptions): THREE.BufferGeometry {
-  const { data, width, height } = depth;
-  const { planeWidthMm, reliefDepthMm, baseThicknessMm, gamma, mode } = opts;
+export function buildRelief(field: HeightField, opts: ReliefOptions): THREE.BufferGeometry {
+  const { data, width, height } = field;
+  const { planeWidthMm, reliefDepthMm, baseThicknessMm, mode } = opts;
 
   // Square pixels in model space.
   const dx = planeWidthMm / (width - 1);
   const planeHeightMm = dx * (height - 1);
 
-  // Range of finite depths (background pixels are Infinity).
-  let minD = Infinity;
-  let maxD = -Infinity;
-  for (let k = 0; k < data.length; k++) {
-    const d = data[k];
-    if (Number.isFinite(d)) {
-      if (d < minD) minD = d;
-      if (d > maxD) maxD = d;
-    }
-  }
-  if (!Number.isFinite(minD)) {
-    throw new Error("深度マップに有効な面が見つかりませんでした。");
-  }
-  const span = Math.max(1e-6, maxD - minD);
-
   const px = (i: number) => i * dx - planeWidthMm / 2;
   const py = (j: number) => j * dx - planeHeightMm / 2;
   const idx = (i: number, j: number) => j * width + i;
 
-  const finite = (i: number, j: number) => Number.isFinite(data[idx(i, j)]);
+  const finite = (i: number, j: number) => !Number.isNaN(data[idx(i, j)]);
 
   // Front height (z) at a grid vertex, in mm.
   const frontZ = (i: number, j: number): number => {
-    const d = data[idx(i, j)];
-    if (!Number.isFinite(d)) return baseThicknessMm; // plate background = flat
-    let h01 = (maxD - d) / span; // 0 (far) .. 1 (near)
-    h01 = Math.pow(Math.min(1, Math.max(0, h01)), gamma);
-    return baseThicknessMm + h01 * reliefDepthMm;
+    const v = data[idx(i, j)];
+    if (Number.isNaN(v)) return baseThicknessMm; // plate background = flat
+    return baseThicknessMm + Math.min(1, Math.max(0, v)) * reliefDepthMm;
   };
 
   const positions: number[] = [];
@@ -97,7 +79,6 @@ export function buildRelief(depth: DepthMap, opts: ReliefOptions): THREE.BufferG
   const addWall = (gai: number, gaj: number, gbi: number, gbj: number, ox: number, oy: number) => {
     const fa = f(gai, gaj), fb = f(gbi, gbj);
     const ba = b(gai, gaj), bbk = b(gbi, gbj);
-    // Candidate winding: fa, fb, bb, ba -> tris (fa,fb,bb),(fa,bb,ba)
     getPos(fa, va); getPos(fb, vb); getPos(bbk, vc);
     e1.subVectors(vb, va); e2.subVectors(vc, va); nrm.crossVectors(e1, e2);
     if (nrm.x * ox + nrm.y * oy >= 0) {

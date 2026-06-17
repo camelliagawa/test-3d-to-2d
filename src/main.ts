@@ -3,7 +3,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { captureDepth, type DepthMap } from "./depthCapture";
-import { buildRelief, type ReliefOptions, type ShapeMode } from "./reliefBuilder";
+import { buildRelief, type ShapeMode } from "./reliefBuilder";
+import { depthToHeight } from "./reliefProcess";
 import "./style.css";
 
 // ---- DOM helpers ------------------------------------------------------------
@@ -160,23 +161,34 @@ function bindSlider(id: string, labelId: string) {
   el.addEventListener("input", () => { sync(); onParamChange(id); });
   sync();
 }
+bindSlider("detail", "detailVal");
 bindSlider("planeW", "planeWVal");
 bindSlider("reliefD", "reliefDVal");
 bindSlider("baseT", "baseTVal");
 bindSlider("res", "resVal");
 bindSlider("gamma", "gammaVal");
 
-function readOptions(): ReliefOptions {
+function num(id: string) { return Number(($(id) as HTMLInputElement).value); }
+
+function readProcessOptions() {
   return {
-    planeWidthMm: Number(($("planeW") as HTMLInputElement).value),
-    reliefDepthMm: Number(($("reliefD") as HTMLInputElement).value),
-    baseThicknessMm: Number(($("baseT") as HTMLInputElement).value),
-    gamma: Number(($("gamma") as HTMLInputElement).value),
+    removeTilt: ($("tiltMode") as HTMLSelectElement).value === "on",
+    detail: num("detail") / 100,
+    gamma: num("gamma"),
+  };
+}
+
+function readGeometryOptions() {
+  return {
+    planeWidthMm: num("planeW"),
+    reliefDepthMm: num("reliefD"),
+    baseThicknessMm: num("baseT"),
     mode: ($("shapeMode") as HTMLSelectElement).value as ShapeMode,
   };
 }
 
 ($("shapeMode") as HTMLSelectElement).addEventListener("change", () => rebuildRelief());
+($("tiltMode") as HTMLSelectElement).addEventListener("change", () => rebuildRelief());
 ($("displayMode") as HTMLSelectElement).addEventListener("change", updateVisibility);
 
 // Resolution change requires a fresh depth capture; other params just rebuild.
@@ -210,7 +222,8 @@ function captureAndBuild() {
 function rebuildRelief() {
   if (!lastDepth) return;
   try {
-    const geom = buildRelief(lastDepth, readOptions());
+    const field = depthToHeight(lastDepth, readProcessOptions());
+    const geom = buildRelief(field, readGeometryOptions());
     if (reliefMesh) { scene.remove(reliefMesh); reliefMesh.geometry.dispose(); }
     reliefMesh = new THREE.Mesh(geom, reliefMat);
     // Lay the relief flat: back on the grid, front facing +Z.

@@ -76,6 +76,21 @@
               </div>
             </label>
 
+            <label class="field">
+              <span class="field-name">傾き補正（任意角度を平らに）</span>
+              <div class="select-wrap">
+                <select id="tiltMode">
+                  <option value="on">オン</option>
+                  <option value="off">オフ</option>
+                </select>
+              </div>
+            </label>
+
+            <label class="slider">
+              <span class="slider-head"><span class="slider-name">立体感 ↔ ディテール</span><span class="slider-val"><b id="detailVal">70</b></span></span>
+              <input type="range" id="detail" min="0" max="100" step="1" value="70" />
+            </label>
+
             <label class="slider">
               <span class="slider-head"><span class="slider-name">出力幅</span><span class="slider-val"><b id="planeWVal">60</b> mm</span></span>
               <input type="range" id="planeW" min="10" max="200" step="1" value="60" />

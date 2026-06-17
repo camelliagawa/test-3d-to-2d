@@ -2,9 +2,9 @@
 // verifies the resulting mesh is non-empty and watertight (every edge is
 // shared by exactly two triangles). Run: node --experimental-strip-types scripts/test-relief.ts
 import { buildRelief } from "../src/reliefBuilder.ts";
-import type { DepthMap } from "../src/depthCapture.ts";
+import type { HeightField } from "../src/reliefProcess.ts";
 
-function makeDome(w: number, h: number, withBackground: boolean): DepthMap {
+function makeDome(w: number, h: number, withBackground: boolean): HeightField {
   const data = new Float32Array(w * h);
   const cx = (w - 1) / 2, cy = (h - 1) / 2;
   const r = Math.min(w, h) * 0.4;
@@ -12,14 +12,14 @@ function makeDome(w: number, h: number, withBackground: boolean): DepthMap {
     for (let i = 0; i < w; i++) {
       const dist = Math.hypot(i - cx, j - cy);
       if (withBackground && dist > r) {
-        data[j * w + i] = Infinity; // background
+        data[j * w + i] = NaN; // background
       } else {
-        // dome: nearer (smaller depth) at center
+        // dome: taller (height ~1) at center
         const t = Math.min(1, dist / r);
-        data[j * w + i] = 10 + 5 * t * t;
+        data[j * w + i] = 1 - t * t;
       }
     }
-  return { data, width: w, height: h, worldWidth: w, worldHeight: h };
+  return { data, width: w, height: h };
 }
 
 function checkWatertight(geom: any, label: string) {
@@ -48,7 +48,7 @@ function checkWatertight(geom: any, label: string) {
   return ok;
 }
 
-const opts = { planeWidthMm: 60, reliefDepthMm: 8, baseThicknessMm: 2, gamma: 1.0, mode: "plate" as const };
+const opts = { planeWidthMm: 60, reliefDepthMm: 8, baseThicknessMm: 2, mode: "plate" as const };
 
 let allOk = true;
 allOk = checkWatertight(buildRelief(makeDome(40, 40, false), opts), "plate / no bg") && allOk;
